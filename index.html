@@ -1236,6 +1236,7 @@ function emit(op, opt){
     if(opt.replaceLast && SC.queue.length && SC.queue[SC.queue.length-1].t===op.t && SC.queue[SC.queue.length-1].pid===op.pid){
       SC.queue[SC.queue.length-1]=op;
     } else SC.queue.push(op);
+    saveQueue();
     scheduleFlush();
     SC.hist.push({seq:'…', actor:SC.me.id, name:SC.me.name, op:op, ts:Date.now(), pend:true});
     if(SC.histOpen) renderHist();
@@ -1245,12 +1246,48 @@ function emit(op, opt){
 }
 var flushT=null;
 function scheduleFlush(){ if(flushT) return; flushT=setTimeout(function(){ flushT=null; flush(); }, 120); }
+
+/* 아직 서버로 못 보낸 변경을 브라우저에 보관합니다.
+   새로고침하거나 창을 닫아도 사라지지 않고, 다시 들어오면 이어서 전송됩니다. */
+function qKey(){ return 'sc-queue-'+BOARD; }
+function saveQueue(){
+  try{
+    if(SC.queue.length) localStorage.setItem(qKey(), JSON.stringify(SC.queue));
+    else localStorage.removeItem(qKey());
+  }catch(_){}
+}
+function loadQueue(){
+  try{ var a=JSON.parse(localStorage.getItem(qKey())||'[]'); return Array.isArray(a)?a:[]; }
+  catch(_){ return []; }
+}
+
+/* 비밀번호가 서버에서 바뀐 경우 — 무한 재시도 대신 즉시 다시 물어봅니다.
+   보관된 변경은 그대로 두고, 재입장하면 이어서 전송됩니다. */
+function reauth(){
+  if(SC.reauthing) return;
+  SC.reauthing = true;
+  SC.on = false;
+  saveQueue();
+  setConn('auth', true);
+  try{
+    localStorage.removeItem('sc-pass-'+BOARD);
+    sessionStorage.removeItem('sc-pass-'+BOARD);
+  }catch(_){}
+  var n = SC.queue.length;
+  toast('공용 비밀번호가 변경되었습니다. 새 비밀번호로 다시 입장해 주세요.'
+        + (n ? ' 아직 저장되지 않은 변경 ' + n + '건은 보관해 두었습니다.' : ''), true);
+  gate();
+}
 function flush(){
   if(!SC.on || SC.sending || !SC.queue.length) return;
-  var batch = SC.queue.slice(); SC.queue.length=0; SC.sending=true;
+  /* 서버가 받았다고 확인해 줄 때까지 큐에서 지우지 않습니다.
+     모든 op 는 id 기준이라 혹시 두 번 전송돼도 결과가 달라지지 않습니다. */
+  var batch = SC.queue.slice(); SC.sending=true;
   rpc('sc_push', {p_board:BOARD, p_pass:SC.pass, p_actor:SC.me.id, p_name:SC.me.name||'익명', p_ops:batch})
     .then(function(r){
       SC.sending=false;
+      SC.queue.splice(0, batch.length);       // 확인된 것만 제거
+      saveQueue();
       setConn('on');
       SC.hist = SC.hist.filter(function(h){ return !h.pend; });
       pull();
@@ -1259,7 +1296,8 @@ function flush(){
     })
     .catch(function(e){
       SC.sending=false;
-      SC.queue = batch.concat(SC.queue);      // 되돌려 넣고 재시도
+      saveQueue();                            // 못 보낸 변경 보관
+      if(e && e.code==='BAD_PASS'){ reauth(); return; }
       setConn('retry');
       setTimeout(function(){ if(SC.queue.length) flush(); }, 3000);
     });
@@ -1289,7 +1327,11 @@ function pull(){
       if(SC.histOpen) renderHist();
       maybeCompact();
     })
-    .catch(function(e){ SC.pulling=false; setConn('retry'); });
+    .catch(function(e){
+      SC.pulling=false;
+      if(e && e.code==='BAD_PASS'){ reauth(); return; }
+      setConn('retry');
+    });
 }
 
 /* 남의 변경 알림 (0.9초 동안 모아서 한 번만) */
@@ -1409,7 +1451,10 @@ function beat(){
       if((r&&r.seq||0) > SC.seq) pull();
       setConn(SC.wsOK?'on':'poll');
     })
-    .catch(function(){ setConn('retry'); });
+    .catch(function(e){
+      if(e && e.code==='BAD_PASS'){ reauth(); return; }
+      setConn('retry');
+    });
 }
 function lockOf(pid){
   if(typeof SC==='undefined' || !SC || !SC.on || !SC.peers) return null;
@@ -1426,6 +1471,7 @@ function setConn(s, force){
   SC.conn=s; SC._cn=n;
   var el=document.getElementById('scConn'); if(!el) return;
   var map={on:['실시간 연결됨','ok'], poll:['동기화 중(폴링)','warn'], retry:['재연결 중…','bad'],
+           auth:['비밀번호 재확인 필요','bad'],
            off:['혼자 쓰는 모드',''], offline:['오프라인 · 변경 보관 중','bad']};
   var v=map[s]||map.off;
   el.className='scconn '+(v[1]||'');
@@ -1595,6 +1641,19 @@ function join(pw, remember){
         scheduleFlush();
       }
 
+      /* 이전에 못 보낸 변경이 보관돼 있으면 이어서 올립니다 */
+      SC.reauthing = false;
+      var kept = loadQueue();
+      if(kept.length){
+        var have = {};
+        SC.queue.forEach(function(q){ have[JSON.stringify(q)]=1; });
+        kept.forEach(function(q){ if(!have[JSON.stringify(q)]) SC.queue.push(q); });
+        kept.forEach(function(q){ apply(q, state); });
+        saveQueue();
+        scheduleFlush();
+        toast('보관해 둔 변경 ' + kept.length + '건을 서버에 반영합니다.', true);
+      }
+
       document.body.classList.add('sc-live');
       var hb=document.getElementById('scHistBtn'); if(hb) hb.style.display='';
       render(); renderPeers(); setConn('on');
@@ -1612,7 +1671,11 @@ function soloMode(){
   var pv=document.getElementById('scPeers'); if(pv) pv.innerHTML='';
   restore(); render(); save(true);
 }
-window.addEventListener('beforeunload', function(){
+window.addEventListener('beforeunload', function(e){
+  if(SC.queue && SC.queue.length){
+    saveQueue();
+    e.preventDefault(); e.returnValue = '';   // 아직 저장되지 않은 변경이 있습니다
+  }
   if(!SC.on) return;
   try{
     if(SC.queue.length) flush();
