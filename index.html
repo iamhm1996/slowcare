@@ -1323,6 +1323,43 @@ function docSnap(d){
 function emptyDoc(){
   return {products:[], adopted:{}, majors:clone(DEF_MAJORS), minors:clone(DEF_MINORS), special:clone(DEF_SPECIAL)};
 }
+
+/* ---------- Ctrl+Z 되돌리기 (최근 10건, 개인 브라우저 세션 한정) ---------- */
+const UNDO_MAX = 10;
+let undoStack = [], redoStack = [];
+function pushUndo(){
+  undoStack.push(docSnap(state));
+  if(undoStack.length>UNDO_MAX) undoStack.shift();
+  redoStack.length = 0;
+}
+function undo(){
+  if(!undoStack.length){ toast('더 이상 되돌릴 변경이 없습니다.'); return; }
+  const prev = undoStack.pop();
+  redoStack.push(docSnap(state));
+  if(redoStack.length>UNDO_MAX) redoStack.shift();
+  emit({t:'snap', d:prev, why:'실행 취소'}, {skipUndo:true});
+  toast(`변경을 되돌렸습니다. (${undoStack.length}단계 더 가능)`, true);
+}
+function redo(){
+  if(!redoStack.length){ toast('다시 실행할 변경이 없습니다.'); return; }
+  const next = redoStack.pop();
+  undoStack.push(docSnap(state));
+  if(undoStack.length>UNDO_MAX) undoStack.shift();
+  emit({t:'snap', d:next, why:'다시 실행'}, {skipUndo:true});
+  toast('되돌리기를 다시 실행했습니다.', true);
+}
+document.addEventListener('keydown', e=>{
+  const mod = e.ctrlKey || e.metaKey;
+  if(!mod) return;
+  const key = e.key.toLowerCase();
+  if(key!=='z' && key!=='y') return;
+  const tg = e.target;
+  const inEditable = tg && (tg.isContentEditable || tg.tagName==='TEXTAREA' || tg.tagName==='INPUT');
+  if(inEditable) return;                          // 텍스트 입력 중에는 브라우저 기본 되돌리기 사용
+  e.preventDefault();
+  if(key==='y' || (key==='z' && e.shiftKey)) redo();
+  else undo();
+});
 /* 기준 상태 + op 목록으로 특정 시점의 문서를 계산 (되돌리기용) */
 function docAt(seq){
   var d = SC.base ? {products:clone(SC.base.products||[]), adopted:clone(SC.base.adopted||{}),
@@ -1343,6 +1380,7 @@ function newMinorId(){ return 'mx'+SC.me.id+'-'+(++nseq); }
    ===================================================================== */
 function emit(op, opt){
   opt = opt||{};
+  if(!opt.skipUndo) pushUndo();
   apply(op, state);
   if(SC.on){
     if(opt.replaceLast && SC.queue.length && SC.queue[SC.queue.length-1].t===op.t && SC.queue[SC.queue.length-1].pid===op.pid){
