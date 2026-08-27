@@ -44,7 +44,7 @@ h1{margin:0;font-size:21px;letter-spacing:-.4px;font-weight:800}
 .stat b{display:block;font-size:22px;letter-spacing:-.6px;line-height:1.15}
 .stat span{font-size:11.5px;color:var(--ink-3);font-weight:600}
 .stat.k-wash b{color:var(--wash)} .stat.k-protect b{color:var(--protect)}
-.stat.k-store b{color:var(--store)} .stat.k-new b{color:var(--accent)}
+.stat.k-store b{color:var(--store)}
 
 /* ---------- tab bars ---------- */
 .bar{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:11px 13px;margin-bottom:10px}
@@ -100,8 +100,6 @@ body.hide-chips .chips{display:none}
 .thumb .ov{position:absolute;inset:0;background:rgba(20,24,29,.62);color:#fff;opacity:0;transition:.16s;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:700}
 .thumb:hover .ov{opacity:1}
 .thumb .ov .k{font-size:10px;font-weight:600;opacity:.82}
-.badge{position:absolute;top:7px;left:7px;font-size:9.5px;font-weight:800;padding:3px 7px;border-radius:6px;background:rgba(255,255,255,.94);color:var(--ink-2);letter-spacing:.2px}
-.badge.new{background:var(--accent);color:#fff}
 .name{margin-top:9px;font-size:12.5px;font-weight:700;line-height:1.42;color:var(--ink);white-space:pre-wrap;outline:none;border-radius:7px;padding:3px 4px;cursor:text;min-height:22px;transition:.14s}
 .name:hover{background:var(--line-2)}
 .name:focus{background:#fff;box-shadow:0 0 0 2px var(--accent-line)}
@@ -611,8 +609,7 @@ function renderStats(){
   const kc = {wash:'k-wash', protect:'k-protect', store:'k-store'};
   const rows=[['총 제품 슬롯', p.length, '']]
     .concat(state.majors.map(m=>[m.label, p.filter(x=>x.major===m.id).length, kc[m.id]||'']))
-    .concat([[tabLabel('special','none')+' 소분류', p.filter(x=>!x.minor).length, ''],
-             ['신규 채택 제품', p.filter(x=>x.isNew).length, 'k-new']]);
+    .concat([[tabLabel('special','none')+' 소분류', p.filter(x=>!x.minor).length, '']]);
   $('#stats').innerHTML = rows.map(r=>`<div class="stat ${r[2]}"><b>${r[1]}</b><span>${r[0]}</span></div>`).join('');
 }
 function tabEl(kind, id, cls, count, lv, key){
@@ -657,7 +654,6 @@ function slotHTML(p){
       <img src="${p.img}" alt="" draggable="false">
       <span class="ov"><span>클릭 → 이미지 교체 · 이동</span><span class="k">드래그 → 순서 변경</span></span>
     </button>
-    ${p.isNew?'<span class="badge new">신규 채택</span>':''}
     <div class="name" contenteditable="plaintext-only" data-id="${p.id}" spellcheck="false" draggable="false">${esc(p.name)}</div>
     <div class="chips">
       <span class="chip ${p.major}">${mLabel(p.major)}</span>
