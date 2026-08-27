@@ -323,10 +323,7 @@ textarea.nm:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-s
       <span id="scPeers"></span>
       <span class="save" id="saveState" title="변경은 서버에 즉시 저장됩니다"><i></i><b>자동 저장</b><em>대기 중</em></span>
       <button class="btn schbtn" id="scHistBtn" data-act="sc-hist">변경 이력</button>
-      <button class="btn" id="btnExport">구성 저장(JSON)</button>
-      <button class="btn" id="btnImport">불러오기</button>
-      <button class="btn ghost-danger" id="btnReset">초기화</button>
-      <input type="file" id="fileJson" accept="application/json" hidden>
+      <button class="btn" id="btnExport">지금 저장 + JSON 백업</button>
       <input type="file" id="fileImg" accept="image/*" hidden>
     </div>
   </div>
@@ -967,7 +964,11 @@ document.addEventListener('input', e=>{
 });
 document.addEventListener('blur', e=>{
   const n = e.target.closest && e.target.closest('.name'); if(!n) return;
-  const p = byId(n.dataset.id); if(p){ p.name = n.innerText.trim() || '(제품명 없음)'; renderStats(); }
+  const p = byId(n.dataset.id); if(!p) return;
+  const val = n.innerText.trim() || '(제품명 없음)';
+  n.textContent = val;
+  emit({t:'name', pid:p.id, name:val}, {noRender:true});
+  renderStats();
 }, true);
 
 /* 전역 붙여넣기: 이미지 → 선택된 슬롯 / 텍스트 → 편집 영역 기본 동작 */
@@ -1006,37 +1007,15 @@ $('#fileBank').addEventListener('change', e=>{
 
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && state.pop){ state.pop=null; render(); } });
 
-/* 저장 / 불러오기 / 초기화 (로컬 파일만 사용) */
+/* 저장 (로컬 파일만 사용) */
 $('#btnExport').addEventListener('click', ()=>{
+  if(typeof SC!=='undefined' && SC.on){ if(SC.queue.length) flush(); }
+  else { save(true); }
   const data = {v:2, exportedAt:new Date().toISOString(), products:state.products, adopted:state.adopted,
                 majors:state.majors, minors:state.minors, special:state.special};
   const url = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
   const a = document.createElement('a'); a.href=url; a.download='slowcare-lineup.json'; a.click();
-  URL.revokeObjectURL(url); toast('현재 구성을 JSON으로 저장했습니다.', true);
-});
-$('#btnImport').addEventListener('click', ()=> $('#fileJson').click());
-$('#fileJson').addEventListener('change', e=>{
-  const f=e.target.files[0]; if(!f) return;
-  const fr=new FileReader();
-  fr.onload = ev => { try{
-      const d = JSON.parse(ev.target.result);
-      if(!Array.isArray(d.products)) throw 0;
-      emit({t:'snap', why:'JSON 파일에서 불러옴', d:{
-        products:d.products, adopted:d.adopted||{},
-        majors:(Array.isArray(d.majors)&&d.majors.length)?d.majors:clone(DEF_MAJORS),
-        minors:(Array.isArray(d.minors)&&d.minors.length)?d.minors:clone(DEF_MINORS),
-        special:Object.assign(clone(DEF_SPECIAL), d.special||{})}}, {noRender:true});
-      state.pop=null; state.pasteTarget=null; render(); toast('구성을 불러왔습니다.', true);
-    }catch(_){ toast('불러올 수 없는 파일 형식입니다.'); } };
-  fr.readAsDataURL ? fr.readAsText(f) : null; e.target.value='';
-});
-$('#btnReset').addEventListener('click', ()=>{
-  if(!window.confirm('모든 편집 내용을 버리고 초기 16개 라인업으로 되돌릴까요?')) return;
-  emit({t:'reset'}, {noRender:true});
-  state.level='major'; state.key='all'; state.editTab = null;
-  state.planShown=false; state.pop=null; state.pasteTarget=null; state.areaFilter='전체';
-  try{ localStorage.removeItem(SKEY); }catch(_){}
-  lastSnap = null; render(); save(true); toast('초기 라인업으로 되돌렸습니다.');
+  URL.revokeObjectURL(url); toast('지금 상태를 저장하고 JSON으로도 백업했습니다.', true);
 });
 
 /* ============================ 드래그 앤 드롭 ============================ */
