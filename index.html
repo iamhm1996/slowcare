@@ -9,7 +9,7 @@
 :root{
   --accent:#F0552B; --accent-soft:#FFF1EC; --accent-line:#FFD3C4;
   --ink:#14181D; --ink-2:#4B5563; --ink-3:#8A939E;
-  --line:#E7E9EE; --line-2:#F1F3F6; --bg:#F7F8FA; --card:#FFFFFF;
+  --line:#E7E9EE; --line-2:#F1F3F6; --bg:#FFFFFF; --card:#FFFFFF;
   --wash:#2563EB; --wash-soft:#EEF3FF;
   --protect:#0E9F6E; --protect-soft:#EAF8F2;
   --store:#8B5CF6; --store-soft:#F3EEFF;
@@ -85,14 +85,18 @@ h1{margin:0;font-size:21px;letter-spacing:-.4px;font-weight:800}
 .sec-title{font-size:16px;font-weight:800;letter-spacing:-.3px;display:flex;align-items:center;gap:9px}
 .sec-title .pill{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--line-2);color:var(--ink-3)}
 .sec-desc{font-size:12px;color:var(--ink-3)}
+.chiptoggle{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink-3);cursor:pointer;font-family:inherit;line-height:1.6}
+.chiptoggle:hover{border-color:#CBD2DC;color:var(--ink-2)}
+.chiptoggle.on{background:var(--ink);border-color:var(--ink);color:#fff}
+body.hide-chips .chips{display:none}
 
 /* ---------- slot grid ---------- */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:12px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 .slot{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:10px;position:relative;transition:.16s;box-shadow:0 1px 2px rgba(16,24,40,.04)}
 .slot:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
 .slot.sel{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-.thumb{position:relative;width:100%;aspect-ratio:1/1;border-radius:10px;overflow:hidden;background:#F0F1F3;cursor:pointer;display:block;border:0;padding:0;font-family:inherit}
-.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb{position:relative;width:100%;aspect-ratio:1/1;border-radius:10px;overflow:hidden;background:#FFFFFF;border:1px solid var(--line-2);cursor:pointer;display:block;padding:0;font-family:inherit}
+.thumb img{width:100%;height:100%;object-fit:contain;background:#FFFFFF;display:block}
 .thumb .ov{position:absolute;inset:0;background:rgba(20,24,29,.62);color:#fff;opacity:0;transition:.16s;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:700}
 .thumb:hover .ov{opacity:1}
 .thumb .ov .k{font-size:10px;font-weight:600;opacity:.82}
@@ -199,7 +203,7 @@ textarea.nm:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-s
 .save em{font-style:normal;font-weight:600;color:var(--ink-3)}
 @keyframes blink{50%{opacity:.25}}
 
-@media (max-width:560px){ .grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))} .pop{width:calc(100vw - 28px)} }
+@media (max-width:560px){ .grid{grid-template-columns:repeat(2,1fr)} .pop{width:calc(100vw - 28px)} }
 
 /* ===================== 실시간 공동 편집 UI ===================== */
 .scconn{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;
@@ -521,6 +525,11 @@ const state = {
   adopted: {}              // planId -> productId
 };
 
+/* ---------- 소분류/대분류 라벨 표시 여부 (개인 브라우저 설정, 동기화 대상 아님) ---------- */
+let hideChips = false;
+try{ hideChips = localStorage.getItem('sc-hide-chips')==='1'; }catch(_){}
+document.body.classList.toggle('hide-chips', hideChips);
+
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -610,11 +619,13 @@ function renderContent(){
     : '<b>드래그로 순서 변경</b> · 다른 탭의 슬롯을 이 탭 위로 끌어다 놓으면 바로 편입됩니다.';
   c.innerHTML = `
     <div class="sec-head">
-      <div class="sec-title">${esc(title)} <span class="pill">${list.length}개 슬롯</span></div>
+      <div class="sec-title">${esc(title)} <span class="pill">${list.length}개 슬롯</span>
+        <button class="chiptoggle${hideChips?' on':''}" data-act="toggle-chips" title="카테고리 라벨을 전체적으로 표시/숨김">${hideChips?'라벨 표시':'라벨 숨기기'}</button>
+      </div>
       <div class="sec-desc">${desc}</div>
     </div>
     ${list.length? `<div class="grid">${list.map(slotHTML).join('')}${addSlot()}</div>`
-      : `<div class="empty"><b>아직 이 카테고리에 배치된 제품이 없습니다</b><span>다른 탭에서 제품 썸네일을 클릭 → <b>카테고리 이동</b> 토글로 이곳에 배치하거나, 아래 ＋ 슬롯으로 새 제품을 추가하세요.</span><div class="grid" style="margin-top:16px;max-width:200px;margin-inline:auto">${addSlot()}</div></div>` }`;
+      : `<div class="empty"><b>아직 이 카테고리에 배치된 제품이 없습니다</b><span>다른 탭에서 제품 썸네일을 클릭 → <b>카테고리 이동</b> 토글로 이곳에 배치하거나, 아래 ＋ 슬롯으로 새 제품을 추가하세요.</span><div class="grid" style="margin-top:16px;max-width:200px;margin-inline:auto;grid-template-columns:1fr">${addSlot()}</div></div>` }`;
 }
 const addSlot = () => `<div class="slot add" data-act="add"><span class="pl">＋</span><span class="t">제품 슬롯 추가</span></div>`;
 
@@ -819,6 +830,13 @@ document.addEventListener('click', e=>{
     case 'add':   addProduct(); break;
     case 'adopt': adopt(t.dataset.id); break;
     case 'area':  state.areaFilter = t.dataset.a; renderContent(); break;
+    case 'toggle-chips': {
+      hideChips = !hideChips;
+      try{ localStorage.setItem('sc-hide-chips', hideChips?'1':'0'); }catch(_){}
+      document.body.classList.toggle('hide-chips', hideChips);
+      renderContent();
+      break;
+    }
     case 'ren':   state.editTab = {kind:t.dataset.kind, id:t.dataset.id}; renderTabs(); break;
     case 'ren-ok': commitTab(); break;
     case 'min-add': {
