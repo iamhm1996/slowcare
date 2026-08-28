@@ -1660,9 +1660,12 @@ function opText(op){
   return op.t;
 }
 
-/* ---------- 이력이 길어지면 압축 ---------- */
+/* ---------- 이력이 길어지면 압축 ----------
+   이미지가 포함된 op 은 하나하나가 수십 KB 라서, 텍스트 위주 앱과 달리
+   금방 payload 가 커집니다 (400건 기준이면 join 응답이 수 MB까지 불어나
+   느린 네트워크에서 이미지가 하나도 안 뜨는 원인이 됨) — 훨씬 낮은 기준으로 압축합니다. */
 function maybeCompact(){
-  if(SC.hist.length < 400) return;
+  if(SC.hist.length < 40) return;
   var upto = SC.seq;
   rpc('sc_compact', {p_board:BOARD, p_pass:SC.pass, p_snap:docSnap(state), p_upto:upto})
     .then(function(){ SC.base=docSnap(state); SC.snapSeq=upto; SC.hist=[]; if(SC.histOpen) renderHist(); })
@@ -1950,6 +1953,7 @@ function join(pw, remember){
       document.body.classList.add('sc-live');
       var hb=document.getElementById('scHistBtn'); if(hb) hb.style.display='';
       render(); renderPeers(); setConn('on');
+      maybeCompact();
       wsConnect(); startPoll(); beat();
       beatT=setInterval(beat, 3000);
       setInterval(function(){ if(SC.on && !SC.wsOK) pull(); }, 2000);
