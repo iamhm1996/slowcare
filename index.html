@@ -279,6 +279,28 @@ textarea.nm:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-s
 .bkempty{grid-column:1/-1;padding:20px 10px;text-align:center;color:#9CA3AF;font-size:11.5px;line-height:1.7}
 .slot.bank-drop{outline:2px dashed var(--accent);outline-offset:2px}
 
+/* ---------- 슬롯 보관함 (오른쪽 슬라이드 패널) ---------- */
+#slotBankZone{position:fixed;top:0;right:0;width:16px;height:100%;z-index:75}
+#slotBankHandle{width:16px;height:100%;background:linear-gradient(180deg,var(--ink-2),var(--ink));
+  display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:-2px 0 8px rgba(16,24,40,.1)}
+#slotBankHandle span{writing-mode:vertical-rl;color:#fff;font-size:11px;font-weight:800;letter-spacing:1.5px;padding:16px 0}
+#slotBankPanel{position:absolute;top:0;right:16px;width:250px;height:100%;background:#fff;
+  border-left:1px solid #E5E7EB;box-shadow:-6px 0 28px rgba(17,24,39,.14);
+  transform:translateX(266px);transition:transform .2s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column}
+#slotBankZone:hover #slotBankPanel, #slotBankZone.force-open #slotBankPanel{transform:translateX(0)}
+#slotBankZone.drop-target #slotBankPanel{border-color:var(--accent);box-shadow:-6px 0 28px rgba(240,85,43,.22)}
+.sblist{display:flex;flex-direction:column;padding:0}
+.sbi{display:flex;align-items:center;gap:9px;padding:9px 14px;border-bottom:1px solid #FAFAFA;cursor:grab}
+.sbi:hover{background:#FCFCFD}
+.sbi .sbimg{width:40px;height:40px;border-radius:8px;overflow:hidden;background:#fff;border:1px solid var(--line-2);flex:none}
+.sbi .sbimg img{width:100%;height:100%;object-fit:contain;background:#fff;display:block;pointer-events:none}
+.sbi .sbnm{flex:1;min-width:0;font-size:11.5px;font-weight:700;color:var(--ink);line-height:1.4;white-space:pre-wrap;word-break:break-word}
+.sbi .sbback{border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 7px;font-size:10.5px;font-weight:700;color:var(--ink-2);cursor:pointer;flex:none;font-family:inherit}
+.sbi .sbback:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+.sbempty{padding:24px 16px;text-align:center;color:#9CA3AF;font-size:11.5px;line-height:1.7}
+#content.park-drop{outline:2px dashed var(--ink-2);outline-offset:-6px;border-radius:14px}
+
 /* 입장 화면 */
 #scGate{position:fixed;inset:0;z-index:120;background:rgba(17,24,39,.55);backdrop-filter:blur(4px);
   display:none;align-items:center;justify-content:center;padding:20px}
@@ -373,6 +395,13 @@ textarea.nm:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-s
   </div>
 </div>
 <input type="file" id="fileBank" accept="image/*" hidden>
+<div id="slotBankZone">
+  <div id="slotBankHandle" title="슬롯 보관함"><span>슬롯 보관함</span></div>
+  <div id="slotBankPanel">
+    <div class="bkh"><b>슬롯 보관함</b><span>슬롯을 드래그해서 잠시 치워두거나 다시 꺼내보세요</span></div>
+    <div class="bklist sblist" id="slotBankList"></div>
+  </div>
+</div>
 
 <script>
 /* ============================================================
@@ -556,7 +585,8 @@ const state = {
   pop: null,               // product id
   pasteTarget: null,
   areaFilter: '전체',
-  adopted: {}              // planId -> productId
+  adopted: {},             // planId -> productId
+  parked: []               // 슬롯 보관함에 잠시 치워둔 제품들
 };
 
 /* ---------- 소분류/대분류 라벨 표시 여부 (개인 브라우저 설정, 동기화 대상 아님) ---------- */
@@ -586,6 +616,19 @@ function renderBank(){
         <button class="bkdel" data-act="bank-del" data-id="${b.id}" title="보관함에서 삭제">✕</button>
       </div>`).join('')
     : `<div class="bkempty">아직 보관된 이미지가 없습니다.<br>위에 이미지를 붙여넣거나<br>파일을 선택해 추가하세요.</div>`;
+}
+
+/* ---------- 슬롯 보관함 (동기화 대상 · state.parked) ---------- */
+function renderSlotBank(){
+  const el = document.getElementById('slotBankList'); if(!el) return;
+  const list = state.parked || [];
+  el.innerHTML = list.length
+    ? list.map(p=>`<div class="sbi" draggable="true" data-id="${p.id}" title="드래그해서 다시 꺼내기">
+        <div class="sbimg"><img src="${p.img}" alt=""></div>
+        <div class="sbnm">${esc(String(p.name).replace(/\n/g,' '))}</div>
+        <button class="sbback" data-act="unpark" data-id="${p.id}" title="다시 꺼내기">↩ 꺼내기</button>
+      </div>`).join('')
+    : `<div class="sbempty">보관함이 비어있습니다.<br>슬롯을 오른쪽 가장자리로 드래그하면<br>여기에 잠시 치워둘 수 있습니다.</div>`;
 }
 
 /* ---------- helpers ---------- */
@@ -719,7 +762,7 @@ function planCard(p){
     </div>
   </div>`;
 }
-function render(){ renderStats(); renderTabs(); renderContent(); renderPop();
+function render(){ renderStats(); renderTabs(); renderContent(); renderPop(); renderSlotBank();
   if(typeof renderLocks==='function') renderLocks(); }
 /* 남의 변경을 받았을 때: 내가 입력 중인 칸은 건드리지 않는 부분 렌더 */
 function softRender(){
@@ -728,6 +771,7 @@ function softRender(){
   const tFoc  = tin && document.activeElement===tin;
   renderStats(); if(!tFoc) renderTabs(); renderContent();
   if(!nmFoc) renderPop();
+  renderSlotBank();
   if(typeof renderLocks==='function') renderLocks();
 }
 
@@ -764,6 +808,7 @@ function renderPop(){
       </div>
     </div>
     <div class="pop-foot">
+      <button class="btn" data-act="park" data-id="${p.id}">보관함에 넣기</button>
       <button class="btn ghost-danger" data-act="del" data-id="${p.id}">슬롯 삭제</button>
       <button class="btn primary" data-act="close">완료</button>
     </div>`;
@@ -924,6 +969,13 @@ document.addEventListener('click', e=>{
     case 'del': { const p=byId(t.dataset.id); if(p && confirmDel(p)){
                   emit({t:'del', pid:p.id}, {noRender:true});
                   state.pop=null; state.pasteTarget=null; render(); toast('슬롯을 삭제했습니다.'); } break; }
+    case 'park': { const pid=t.dataset.id; const p=byId(pid); if(p){
+                  emit({t:'park', pid:pid}, {noRender:true});
+                  state.pop=null; state.pasteTarget=null; render();
+                  toast(`「${esc(String(p.name).replace(/\n/g,' ').slice(0,18))}」을 보관함으로 옮겼습니다.`, true); } break; }
+    case 'unpark': { const pid=t.dataset.id; const p=(state.parked||[]).find(x=>x.id===pid);
+                  emit({t:'unpark', pid:pid});
+                  if(p) toast(`「${esc(String(p.name).replace(/\n/g,' ').slice(0,18))}」을 다시 꺼냈습니다.`, true); break; }
   }
 });
 function confirmDel(p){ return window.confirm(`"${p.name.replace(/\n/g,' ')}" 슬롯을 삭제할까요?`); }
@@ -1016,7 +1068,7 @@ $('#btnExport').addEventListener('click', ()=>{
 
 /* ============================ 드래그 앤 드롭 ============================ */
 const drag = {id:null, at:0};
-function clearMarks(){ document.querySelectorAll('.drop-l,.drop-r,.drop-end,.tab-drop').forEach(e=>e.classList.remove('drop-l','drop-r','drop-end','tab-drop')); }
+function clearMarks(){ document.querySelectorAll('.drop-l,.drop-r,.drop-end,.tab-drop,.drop-target').forEach(e=>e.classList.remove('drop-l','drop-r','drop-end','tab-drop','drop-target')); }
 function moveTo(dragId, targetId, after){
   const arr = state.products;
   const from = arr.findIndex(x=>x.id===dragId); if(from<0) return;
@@ -1033,9 +1085,12 @@ document.addEventListener('dragstart', e=>{
   state.pop = null; document.querySelectorAll('.mask,.pop').forEach(x=>x.remove());
   try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', drag.id); }catch(_){}
   s.classList.add('dragging');
+  const sbz = document.getElementById('slotBankZone'); if(sbz) sbz.classList.add('force-open');
 });
 document.addEventListener('dragover', e=>{
   if(!drag.id) return;
+  const bankZone = e.target.closest('#slotBankZone');
+  if(bankZone){ e.preventDefault(); clearMarks(); bankZone.classList.add('drop-target'); return; }
   const tab = e.target.closest('[data-lv]');
   const s = e.target.closest('.slot');
   if(tab && tab.dataset.lv !== 'plan'){ e.preventDefault(); clearMarks(); tab.classList.add('tab-drop'); return; }
@@ -1051,6 +1106,14 @@ document.addEventListener('drop', e=>{
   if(!drag.id) return;
   e.preventDefault();
   const p = byId(drag.id);
+  const bankZone = e.target.closest('#slotBankZone');
+  if(p && bankZone){
+    emit({t:'park', pid:p.id}, {noRender:true});
+    toast(`「${esc(String(p.name).replace(/\n/g,' ').slice(0,18))}」을 보관함으로 옮겼습니다.`, true);
+    drag.id = null; clearMarks(); render();
+    const sbz2 = document.getElementById('slotBankZone'); if(sbz2) sbz2.classList.remove('force-open');
+    return;
+  }
   const tab = e.target.closest('[data-lv]');
   const s = e.target.closest('.slot');
   if(p && tab && tab.dataset.lv !== 'plan'){
@@ -1071,7 +1134,10 @@ document.addEventListener('drop', e=>{
   }
   drag.id = null; clearMarks(); render();
 });
-document.addEventListener('dragend', ()=>{ drag.id=null; clearMarks(); document.querySelectorAll('.dragging').forEach(e=>e.classList.remove('dragging')); });
+document.addEventListener('dragend', ()=>{
+  drag.id=null; clearMarks(); document.querySelectorAll('.dragging').forEach(e=>e.classList.remove('dragging'));
+  const sbz3 = document.getElementById('slotBankZone'); if(sbz3) sbz3.classList.remove('force-open');
+});
 
 /* ---------- 이미지 보관함 → 슬롯 드래그 교환 ---------- */
 let bankDrag = null;
@@ -1108,12 +1174,47 @@ document.addEventListener('dragend', e=>{
   if(e.target.closest && e.target.closest('.bkitem')) clearBankDrop();
 });
 
+/* ---------- 슬롯 보관함 → 화면으로 다시 꺼내기 ---------- */
+let parkDrag = null;
+function clearParkDrag(){
+  parkDrag = null;
+  const z = document.getElementById('slotBankZone'); if(z) z.classList.remove('force-open');
+  const c = document.getElementById('content'); if(c) c.classList.remove('park-drop');
+}
+document.addEventListener('dragstart', e=>{
+  const sb = e.target.closest && e.target.closest('.sbi');
+  if(!sb) return;
+  parkDrag = {pid: sb.dataset.id};
+  const z = document.getElementById('slotBankZone'); if(z) z.classList.add('force-open');
+  try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', 'park-item'); }catch(_){}
+});
+document.addEventListener('dragover', e=>{
+  if(!parkDrag) return;
+  const c = e.target.closest && e.target.closest('#content');
+  if(c){ e.preventDefault(); c.classList.add('park-drop'); }
+  else { const cc=document.getElementById('content'); if(cc) cc.classList.remove('park-drop'); }
+});
+document.addEventListener('drop', e=>{
+  if(!parkDrag) return;
+  e.preventDefault();
+  const c = e.target.closest && e.target.closest('#content');
+  if(c){
+    const p = (state.parked||[]).find(x=>x.id===parkDrag.pid);
+    emit({t:'unpark', pid:parkDrag.pid});
+    if(p) toast(`「${esc(String(p.name).replace(/\n/g,' ').slice(0,18))}」을 다시 꺼냈습니다.`, true);
+  }
+  clearParkDrag();
+});
+document.addEventListener('dragend', e=>{
+  if(e.target.closest && e.target.closest('.sbi')) clearParkDrag();
+});
+
 /* ============================ 10초 자동 저장 ============================ */
 const SKEY = 'slowcare-lineup-dashboard-v1';
 let storeOK = true, lastSnap = null, memSnap = null, warned = false;
 function snapshot(){
   return JSON.stringify({v:2, ts:Date.now(), products:state.products, adopted:state.adopted,
-    majors:state.majors, minors:state.minors, special:state.special,
+    majors:state.majors, minors:state.minors, special:state.special, parked:state.parked,
     view:{level:state.level, key:state.key, planShown:state.planShown, areaFilter:state.areaFilter}});
 }
 function setSaveUI(mode, text){
@@ -1147,6 +1248,7 @@ function restore(){
     const d = JSON.parse(raw);
     if(!Array.isArray(d.products) || !d.products.length) throw 0;
     state.products = d.products; state.adopted = d.adopted || {};
+    state.parked = Array.isArray(d.parked) ? d.parked : [];
     if(Array.isArray(d.majors) && d.majors.length) state.majors = d.majors;
     if(Array.isArray(d.minors) && d.minors.length) state.minors = d.minors;
     if(d.special) state.special = Object.assign(clone(DEF_SPECIAL), d.special);
@@ -1297,9 +1399,23 @@ function apply(op, d){
       d.adopted[op.planId]=op.p.id;
       break;
     }
+    case 'park': {
+      var pi=d.products.findIndex(function(x){ return x.id===op.pid; }); if(pi<0) break;
+      var parked=d.products.splice(pi,1)[0];
+      if(!d.parked) d.parked=[];
+      d.parked.unshift(parked);
+      break;
+    }
+    case 'unpark': {
+      if(!d.parked) break;
+      var ui=d.parked.findIndex(function(x){ return x.id===op.pid; }); if(ui<0) break;
+      var revived=d.parked.splice(ui,1)[0];
+      if(!find(revived.id)) d.products.push(revived);
+      break;
+    }
     case 'reset': {
       d.majors=clone(DEF_MAJORS); d.minors=clone(DEF_MINORS); d.special=clone(DEF_SPECIAL);
-      d.products=initProducts(); d.adopted={};
+      d.products=initProducts(); d.adopted={}; d.parked=[];
       break;
     }
     case 'snap': {
@@ -1307,6 +1423,7 @@ function apply(op, d){
       d.products=clone(s.products||[]); d.adopted=clone(s.adopted||{});
       d.majors=clone(s.majors||DEF_MAJORS); d.minors=clone(s.minors||DEF_MINORS);
       d.special=Object.assign(clone(DEF_SPECIAL), s.special||{});
+      d.parked=clone(s.parked||[]);
       break;
     }
   }
@@ -1314,10 +1431,11 @@ function apply(op, d){
 function docSnap(d){
   d=docOf(d);
   return {products:clone(d.products), adopted:clone(d.adopted),
-          majors:clone(d.majors), minors:clone(d.minors), special:clone(d.special)};
+          majors:clone(d.majors), minors:clone(d.minors), special:clone(d.special),
+          parked:clone(d.parked||[])};
 }
 function emptyDoc(){
-  return {products:[], adopted:{}, majors:clone(DEF_MAJORS), minors:clone(DEF_MINORS), special:clone(DEF_SPECIAL)};
+  return {products:[], adopted:{}, majors:clone(DEF_MAJORS), minors:clone(DEF_MINORS), special:clone(DEF_SPECIAL), parked:[]};
 }
 
 /* ---------- Ctrl+Z 되돌리기 (최근 10건, 개인 브라우저 세션 한정) ---------- */
@@ -1360,7 +1478,8 @@ document.addEventListener('keydown', e=>{
 function docAt(seq){
   var d = SC.base ? {products:clone(SC.base.products||[]), adopted:clone(SC.base.adopted||{}),
                      majors:clone(SC.base.majors||DEF_MAJORS), minors:clone(SC.base.minors||DEF_MINORS),
-                     special:Object.assign(clone(DEF_SPECIAL), SC.base.special||{})}
+                     special:Object.assign(clone(DEF_SPECIAL), SC.base.special||{}),
+                     parked:clone(SC.base.parked||[])}
                  : (function(){ var e=emptyDoc(); apply({t:'reset'}, e); return e; })();
   SC.hist.forEach(function(h){ if(h.seq<=seq) apply(h.op, d); });
   return d;
@@ -1684,7 +1803,7 @@ function revertTo(seq){
   var t=new Date(h.ts).toTimeString().slice(0,5);
   if(!window.confirm('['+t+'] "'+String(opText(h.op)).replace(/<[^>]+>/g,'')+'" 직후 상태로 되돌립니다.\n\n이후의 모든 변경이 취소되고, 접속한 모든 사람의 화면에 함께 적용됩니다. 계속할까요?')) return;
   var d=docAt(h.seq);
-  emit({t:'snap', d:{products:d.products, adopted:d.adopted, majors:d.majors, minors:d.minors, special:d.special},
+  emit({t:'snap', d:{products:d.products, adopted:d.adopted, majors:d.majors, minors:d.minors, special:d.special, parked:d.parked},
         why:'['+t+'] 시점으로 되돌림'});
   toast('선택한 시점으로 되돌렸습니다.', true);
 }
@@ -1770,19 +1889,21 @@ function join(pw, remember){
       SC.snapSeq = r.snap_seq || 0;
       var d = SC.base ? {products:clone(SC.base.products||[]), adopted:clone(SC.base.adopted||{}),
                          majors:clone(SC.base.majors||DEF_MAJORS), minors:clone(SC.base.minors||DEF_MINORS),
-                         special:Object.assign(clone(DEF_SPECIAL), SC.base.special||{})}
+                         special:Object.assign(clone(DEF_SPECIAL), SC.base.special||{}),
+                         parked:clone(SC.base.parked||[])}
                       : (function(){ var e=emptyDoc(); apply({t:'reset'}, e); return e; })();
       SC.hist=[];
       (r.ops||[]).forEach(function(h){ apply(h.op, d); SC.hist.push(h); SC.seq=Math.max(SC.seq,h.seq); });
       SC.seq = Math.max(SC.seq, r.seq||0);
       state.products=d.products; state.adopted=d.adopted;
       state.majors=d.majors; state.minors=d.minors; state.special=d.special;
+      state.parked=d.parked||[];
       state.pop=null; state.editTab=null;
 
       /* 서버가 완전히 빈 보드면 내 초기 라인업을 한 번 올려 기준을 만든다 */
       if(!r.snap && !(r.ops||[]).length){
         var init=emptyDoc(); apply({t:'reset'}, init);
-        state.products=init.products; state.adopted=init.adopted;
+        state.products=init.products; state.adopted=init.adopted; state.parked=init.parked;
         SC.queue.push({t:'snap', d:docSnap(state), why:'초기 라인업 등록'});
         scheduleFlush();
       }
