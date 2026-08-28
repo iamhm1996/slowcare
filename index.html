@@ -1068,7 +1068,7 @@ $('#btnExport').addEventListener('click', ()=>{
 
 /* ============================ 드래그 앤 드롭 ============================ */
 const drag = {id:null, at:0};
-function clearMarks(){ document.querySelectorAll('.drop-l,.drop-r,.drop-end,.tab-drop,.drop-target').forEach(e=>e.classList.remove('drop-l','drop-r','drop-end','tab-drop','drop-target')); }
+function clearMarks(){ document.querySelectorAll('.drop-l,.drop-r,.drop-end,.tab-drop,.drop-target,.park-drop').forEach(e=>e.classList.remove('drop-l','drop-r','drop-end','tab-drop','drop-target','park-drop')); }
 function moveTo(dragId, targetId, after){
   const arr = state.products;
   const from = arr.findIndex(x=>x.id===dragId); if(from<0) return;
@@ -1190,23 +1190,43 @@ document.addEventListener('dragstart', e=>{
 });
 document.addEventListener('dragover', e=>{
   if(!parkDrag) return;
+  const s = e.target.closest && e.target.closest('.slot');
   const c = e.target.closest && e.target.closest('#content');
-  if(c){ e.preventDefault(); c.classList.add('park-drop'); }
-  else { const cc=document.getElementById('content'); if(cc) cc.classList.remove('park-drop'); }
+  if(s){
+    e.preventDefault(); clearMarks();
+    if(s.classList.contains('add')){ s.classList.add('drop-end'); }
+    else{
+      const r = s.getBoundingClientRect();
+      s.classList.add(e.clientX < r.left + r.width/2 ? 'drop-l' : 'drop-r');
+    }
+  } else if(c){
+    e.preventDefault(); clearMarks(); c.classList.add('park-drop');
+  }
 });
 document.addEventListener('drop', e=>{
   if(!parkDrag) return;
   e.preventDefault();
+  const s = e.target.closest && e.target.closest('.slot');
   const c = e.target.closest && e.target.closest('#content');
-  if(c){
-    const p = (state.parked||[]).find(x=>x.id===parkDrag.pid);
-    emit({t:'unpark', pid:parkDrag.pid});
-    if(p) toast(`「${esc(String(p.name).replace(/\n/g,' ').slice(0,18))}」을 다시 꺼냈습니다.`, true);
+  if(s || c){
+    const item = (state.parked||[]).find(x=>x.id===parkDrag.pid);
+    const op = {t:'unpark', pid:parkDrag.pid};
+    if(state.level==='major' && state.key!=='all'){ op.major = state.key; }
+    else if(state.level==='minor'){ op.minor = state.key==='none' ? null : state.key; }
+    if(s && !s.classList.contains('add')){
+      const r = s.getBoundingClientRect();
+      op.target = s.dataset.id; op.after = e.clientX >= r.left + r.width/2;
+    } else {
+      const vis = visible(); const last = vis[vis.length-1];
+      if(last){ op.target = last.id; op.after = true; }
+    }
+    emit(op);
+    if(item) toast(`「${esc(String(item.name).replace(/\n/g,' ').slice(0,18))}」을 원하는 위치에 꺼냈습니다.`, true);
   }
-  clearParkDrag();
+  clearParkDrag(); clearMarks();
 });
 document.addEventListener('dragend', e=>{
-  if(e.target.closest && e.target.closest('.sbi')) clearParkDrag();
+  if(e.target.closest && e.target.closest('.sbi')){ clearParkDrag(); clearMarks(); }
 });
 
 /* ============================ 10초 자동 저장 ============================ */
@@ -1410,7 +1430,13 @@ function apply(op, d){
       if(!d.parked) break;
       var ui=d.parked.findIndex(function(x){ return x.id===op.pid; }); if(ui<0) break;
       var revived=d.parked.splice(ui,1)[0];
-      if(!find(revived.id)) d.products.push(revived);
+      if('major' in op) revived.major=op.major;
+      if('minor' in op) revived.minor=op.minor||null;
+      if(!find(revived.id)){
+        var ti = op.target ? d.products.findIndex(function(x){ return x.id===op.target; }) : -1;
+        if(ti<0) d.products.push(revived);
+        else { if(op.after) ti+=1; d.products.splice(ti,0,revived); }
+      }
       break;
     }
     case 'reset': {
