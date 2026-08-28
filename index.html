@@ -586,7 +586,8 @@ const state = {
   pasteTarget: null,
   areaFilter: '전체',
   adopted: {},             // planId -> productId
-  parked: []               // 슬롯 보관함에 잠시 치워둔 제품들
+  parked: [],              // 슬롯 보관함에 잠시 치워둔 제품들
+  imgBank: []              // 이미지 보관함 (팀 전체 공유)
 };
 
 /* ---------- 소분류/대분류 라벨 표시 여부 (개인 브라우저 설정, 동기화 대상 아님) ---------- */
@@ -594,24 +595,17 @@ let hideChips = false;
 try{ hideChips = localStorage.getItem('sc-hide-chips')==='1'; }catch(_){}
 document.body.classList.toggle('hide-chips', hideChips);
 
-/* ---------- 이미지 보관함 (개인 브라우저 설정, 동기화 대상 아님) ---------- */
-let bank = [];
-try{ const b = JSON.parse(localStorage.getItem('sc-img-bank')||'[]'); if(Array.isArray(b)) bank = b; }catch(_){}
-function saveBank(){
-  try{ localStorage.setItem('sc-img-bank', JSON.stringify(bank)); }
-  catch(_){ toast('보관함 저장 공간이 부족합니다. 오래된 이미지를 정리해 주세요.'); }
-}
+/* ---------- 이미지 보관함 (동기화 대상 · state.imgBank · 팀 전체 공유) ---------- */
 function addToBank(dataURL){
-  if(!dataURL || bank.some(b=>b.img===dataURL)) return;
-  bank.unshift({id:'b'+Math.random().toString(36).slice(2,9), img:dataURL});
-  if(bank.length>40) bank.length=40;
-  saveBank(); renderBank();
+  if(!dataURL || (state.imgBank||[]).some(b=>b.img===dataURL)) return;
+  emit({t:'bimg-add', id:'b'+Math.random().toString(36).slice(2,9), img:dataURL});
 }
-function removeFromBank(id){ bank = bank.filter(b=>b.id!==id); saveBank(); renderBank(); }
+function removeFromBank(id){ emit({t:'bimg-del', id:id}); }
 function renderBank(){
   const el = document.getElementById('bankList'); if(!el) return;
-  el.innerHTML = bank.length
-    ? bank.map(b=>`<div class="bkitem" draggable="true" data-id="${b.id}" title="드래그해서 슬롯에 놓으면 이미지가 바뀝니다">
+  const list = state.imgBank || [];
+  el.innerHTML = list.length
+    ? list.map(b=>`<div class="bkitem" draggable="true" data-id="${b.id}" title="드래그해서 슬롯에 놓으면 이미지가 바뀝니다">
         <img src="${b.img}" alt="" draggable="false">
         <button class="bkdel" data-act="bank-del" data-id="${b.id}" title="보관함에서 삭제">✕</button>
       </div>`).join('')
@@ -762,7 +756,7 @@ function planCard(p){
     </div>
   </div>`;
 }
-function render(){ renderStats(); renderTabs(); renderContent(); renderPop(); renderSlotBank();
+function render(){ renderStats(); renderTabs(); renderContent(); renderPop(); renderSlotBank(); renderBank();
   if(typeof renderLocks==='function') renderLocks(); }
 /* 남의 변경을 받았을 때: 내가 입력 중인 칸은 건드리지 않는 부분 렌더 */
 function softRender(){
@@ -771,7 +765,7 @@ function softRender(){
   const tFoc  = tin && document.activeElement===tin;
   renderStats(); if(!tFoc) renderTabs(); renderContent();
   if(!nmFoc) renderPop();
-  renderSlotBank();
+  renderSlotBank(); renderBank();
   if(typeof renderLocks==='function') renderLocks();
 }
 
@@ -1149,7 +1143,7 @@ function clearBankDrop(){
 document.addEventListener('dragstart', e=>{
   const bi = e.target.closest && e.target.closest('.bkitem');
   if(!bi) return;
-  const item = bank.find(b=>b.id===bi.dataset.id); if(!item) return;
+  const item = (state.imgBank||[]).find(b=>b.id===bi.dataset.id); if(!item) return;
   bankDrag = {img:item.img};
   const z = document.getElementById('bankZone'); if(z) z.classList.add('force-open');
   try{ e.dataTransfer.effectAllowed='copy'; e.dataTransfer.setData('text/plain', 'bank-image'); }catch(_){}
@@ -1234,7 +1228,7 @@ const SKEY = 'slowcare-lineup-dashboard-v1';
 let storeOK = true, lastSnap = null, memSnap = null, warned = false;
 function snapshot(){
   return JSON.stringify({v:2, ts:Date.now(), products:state.products, adopted:state.adopted,
-    majors:state.majors, minors:state.minors, special:state.special, parked:state.parked,
+    majors:state.majors, minors:state.minors, special:state.special, parked:state.parked, imgBank:state.imgBank,
     view:{level:state.level, key:state.key, planShown:state.planShown, areaFilter:state.areaFilter}});
 }
 function setSaveUI(mode, text){
@@ -1269,6 +1263,7 @@ function restore(){
     if(!Array.isArray(d.products) || !d.products.length) throw 0;
     state.products = d.products; state.adopted = d.adopted || {};
     state.parked = Array.isArray(d.parked) ? d.parked : [];
+    state.imgBank = Array.isArray(d.imgBank) ? d.imgBank : [];
     if(Array.isArray(d.majors) && d.majors.length) state.majors = d.majors;
     if(Array.isArray(d.minors) && d.minors.length) state.minors = d.minors;
     if(d.special) state.special = Object.assign(clone(DEF_SPECIAL), d.special);
@@ -1285,7 +1280,6 @@ setInterval(()=>{ if(typeof SC==='undefined' || !SC.on) save(false); }, 10000);
 window.addEventListener('beforeunload', ()=>{ try{ if(typeof SC==='undefined' || !SC.on) save(false); }catch(_){} });
 
 render();
-renderBank();
 
 /* ===================================================================== */
 /* =====================================================================
@@ -1439,9 +1433,21 @@ function apply(op, d){
       }
       break;
     }
+    case 'bimg-add': {
+      if(!d.imgBank) d.imgBank=[];
+      if(d.imgBank.some(function(b){ return b.img===op.img; })) break;
+      d.imgBank.unshift({id:op.id, img:op.img});
+      if(d.imgBank.length>20) d.imgBank.length=20;
+      break;
+    }
+    case 'bimg-del': {
+      if(!d.imgBank) break;
+      d.imgBank = d.imgBank.filter(function(b){ return b.id!==op.id; });
+      break;
+    }
     case 'reset': {
       d.majors=clone(DEF_MAJORS); d.minors=clone(DEF_MINORS); d.special=clone(DEF_SPECIAL);
-      d.products=initProducts(); d.adopted={}; d.parked=[];
+      d.products=initProducts(); d.adopted={}; d.parked=[]; d.imgBank=[];
       break;
     }
     case 'snap': {
@@ -1450,6 +1456,7 @@ function apply(op, d){
       d.majors=clone(s.majors||DEF_MAJORS); d.minors=clone(s.minors||DEF_MINORS);
       d.special=Object.assign(clone(DEF_SPECIAL), s.special||{});
       d.parked=clone(s.parked||[]);
+      d.imgBank=clone(s.imgBank||[]);
       break;
     }
   }
@@ -1458,10 +1465,10 @@ function docSnap(d){
   d=docOf(d);
   return {products:clone(d.products), adopted:clone(d.adopted),
           majors:clone(d.majors), minors:clone(d.minors), special:clone(d.special),
-          parked:clone(d.parked||[])};
+          parked:clone(d.parked||[]), imgBank:clone(d.imgBank||[])};
 }
 function emptyDoc(){
-  return {products:[], adopted:{}, majors:clone(DEF_MAJORS), minors:clone(DEF_MINORS), special:clone(DEF_SPECIAL), parked:[]};
+  return {products:[], adopted:{}, majors:clone(DEF_MAJORS), minors:clone(DEF_MINORS), special:clone(DEF_SPECIAL), parked:[], imgBank:[]};
 }
 
 /* ---------- Ctrl+Z 되돌리기 (최근 10건, 개인 브라우저 세션 한정) ---------- */
@@ -1505,7 +1512,7 @@ function docAt(seq){
   var d = SC.base ? {products:clone(SC.base.products||[]), adopted:clone(SC.base.adopted||{}),
                      majors:clone(SC.base.majors||DEF_MAJORS), minors:clone(SC.base.minors||DEF_MINORS),
                      special:Object.assign(clone(DEF_SPECIAL), SC.base.special||{}),
-                     parked:clone(SC.base.parked||[])}
+                     parked:clone(SC.base.parked||[]), imgBank:clone(SC.base.imgBank||[])}
                  : (function(){ var e=emptyDoc(); apply({t:'reset'}, e); return e; })();
   SC.hist.forEach(function(h){ if(h.seq<=seq) apply(h.op, d); });
   return d;
@@ -1832,7 +1839,7 @@ function revertTo(seq){
   var t=new Date(h.ts).toTimeString().slice(0,5);
   if(!window.confirm('['+t+'] "'+String(opText(h.op)).replace(/<[^>]+>/g,'')+'" 직후 상태로 되돌립니다.\n\n이후의 모든 변경이 취소되고, 접속한 모든 사람의 화면에 함께 적용됩니다. 계속할까요?')) return;
   var d=docAt(h.seq);
-  emit({t:'snap', d:{products:d.products, adopted:d.adopted, majors:d.majors, minors:d.minors, special:d.special, parked:d.parked},
+  emit({t:'snap', d:{products:d.products, adopted:d.adopted, majors:d.majors, minors:d.minors, special:d.special, parked:d.parked, imgBank:d.imgBank},
         why:'['+t+'] 시점으로 되돌림'});
   toast('선택한 시점으로 되돌렸습니다.', true);
 }
@@ -1919,20 +1926,20 @@ function join(pw, remember){
       var d = SC.base ? {products:clone(SC.base.products||[]), adopted:clone(SC.base.adopted||{}),
                          majors:clone(SC.base.majors||DEF_MAJORS), minors:clone(SC.base.minors||DEF_MINORS),
                          special:Object.assign(clone(DEF_SPECIAL), SC.base.special||{}),
-                         parked:clone(SC.base.parked||[])}
+                         parked:clone(SC.base.parked||[]), imgBank:clone(SC.base.imgBank||[])}
                       : (function(){ var e=emptyDoc(); apply({t:'reset'}, e); return e; })();
       SC.hist=[];
       (r.ops||[]).forEach(function(h){ apply(h.op, d); SC.hist.push(h); SC.seq=Math.max(SC.seq,h.seq); });
       SC.seq = Math.max(SC.seq, r.seq||0);
       state.products=d.products; state.adopted=d.adopted;
       state.majors=d.majors; state.minors=d.minors; state.special=d.special;
-      state.parked=d.parked||[];
+      state.parked=d.parked||[]; state.imgBank=d.imgBank||[];
       state.pop=null; state.editTab=null;
 
       /* 서버가 완전히 빈 보드면 내 초기 라인업을 한 번 올려 기준을 만든다 */
       if(!r.snap && !(r.ops||[]).length){
         var init=emptyDoc(); apply({t:'reset'}, init);
-        state.products=init.products; state.adopted=init.adopted; state.parked=init.parked;
+        state.products=init.products; state.adopted=init.adopted; state.parked=init.parked; state.imgBank=init.imgBank;
         SC.queue.push({t:'snap', d:docSnap(state), why:'초기 라인업 등록'});
         scheduleFlush();
       }
